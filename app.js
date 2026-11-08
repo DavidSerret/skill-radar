@@ -130,7 +130,7 @@
       <main class="wrap home">
         <div class="badge">NASA Space Apps 2026 · Team 1</div>
         <h1>Skills Map</h1>
-        <p class="lead">Answer ${QUESTIONS.length} quick questions so we can split the hackathon work based on what everyone is good at and enjoys. It takes about 5 minutes.</p>
+        <p class="lead">Answer ${TOTAL - 1} quick questions so we can split the hackathon work based on what everyone is good at and enjoys. It takes about 5 minutes.</p>
         <div class="stack">
           <a class="btn primary" href="#/quiz">Take the quiz</a>
           <a class="btn ghost" href="#/dashboard">View team dashboard</a>
@@ -398,6 +398,7 @@
   async function renderDashboard() {
     stopAuto();
     lastSig = "";
+    compareSel = null;
     app.innerHTML = `
       <main class="wrap wide">
         <div class="topbar">
