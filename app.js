@@ -14,8 +14,8 @@
   const TEAM_SIZE = 6;
   const FONT = "'Space Grotesk', system-ui, sans-serif";
   const COLORS = [
-    "#FF6B6B", "#FF9F43", "#FECA57", "#7BED9F", "#1DD1A1",
-    "#48DBFB", "#54A0FF", "#A29BFE", "#FD79A8", "#F1F2F6"
+    "#FF6B6B", "#FFA94D", "#FFE066", "#8CE99A", "#3BC9DB",
+    "#4C8DFF", "#B197FC", "#F783AC", "#C8A27A", "#E9ECEF"
   ];
 
   const app = document.getElementById("app");
@@ -27,7 +27,8 @@
   const STEP_NAME = 0;
   const FIRST_Q = 1;
   const STEP_HOURS = FIRST_Q + QUESTIONS.length;
-  const STEP_AREA = STEP_HOURS + 1;
+  const FIRST_LOGI = STEP_HOURS + 1;
+  const STEP_AREA = FIRST_LOGI + LOGISTICS.length;
   const STEP_COLOR = STEP_AREA + 1;
   const TOTAL = STEP_COLOR + 1;
 
@@ -35,12 +36,14 @@
   let lastRow = null;
   let autoTimer = null;
   let lastSig = "";
+  let compareSel = null;
+  let lastRows = [];
 
   function freshState() {
     return {
       name: store.get("skillsmap_name") || "",
       answers: Array(QUESTIONS.length).fill(null),
-      sat: 8, sun: 8, area: "", color: null, step: 0
+      sat: 8, sun: 8, logi: {}, tasks: [], other: "", color: null, step: 0
     };
   }
 
@@ -69,6 +72,25 @@
       });
       return m ? Math.round((s / m) * 100) : 0;
     });
+  }
+
+  function extraOf(r) {
+    try {
+      const a = JSON.parse(r.area);
+      if (Array.isArray(a)) return { tasks: a, logi: {} };
+      if (a && typeof a === "object") return { tasks: a.tasks || [], logi: a.logi || {} };
+    } catch (e) { /* plain text */ }
+    return { tasks: r.area ? [r.area] : [], logi: {} };
+  }
+  const tasksOf = r => extraOf(r).tasks;
+  const logiOf = r => extraOf(r).logi;
+
+  function taskLabels() {
+    return state.tasks.map(t => t === "other" ? state.other.trim() : TASKS[+t]);
+  }
+
+  function tasksValid() {
+    return state.tasks.length > 0 && (!state.tasks.includes("other") || state.other.trim().length > 0);
   }
 
   function toast(msg) {
@@ -155,13 +177,27 @@
         ${slider("sat", "Saturday 14 Nov", state.sat)}
         ${slider("sun", "Sunday 15 Nov", state.sun)}
         <button class="btn primary" id="next">Next</button>`;
+    } else if (s < STEP_AREA) {
+      const L = LOGISTICS[s - FIRST_LOGI];
+      body = `
+        <div class="q-axis">Logistics</div>
+        <h2>${esc(L.text)}</h2>
+        <div class="options">
+          ${L.options.map(o =>
+            `<button class="opt ${state.logi[L.id] === o ? "sel" : ""}" data-o="${esc(o)}">${esc(o)}</button>`).join("")}
+        </div>`;
     } else if (s === STEP_AREA) {
+      const tb = (label, id) => {
+        const rk = state.tasks.indexOf(String(id));
+        return `<button class="task ${rk >= 0 ? "sel" : ""}" data-t="${id}"><span class="rk">${rk >= 0 ? rk + 1 : ""}</span><span>${esc(label)}</span></button>`;
+      };
       body = `
         <div class="q-axis">Preference</div>
-        <h2>Which area would you most like to work on?</h2>
-        <input id="area" class="input" maxlength="40" placeholder="e.g. Frontend and maps" value="${esc(state.area)}" autocomplete="off">
-        <p class="hint"><span id="cnt">${state.area.length}</span>/40 · shown on your card</p>
-        <button class="btn primary" id="next">Next</button>`;
+        <h2>What would you like to work on?</h2>
+        <p class="hint">Pick up to 4 in order of preference. Tap again to remove. Your #1 shows on your card.</p>
+        <div class="tasks">${TASKS.map((t, i) => tb(t, i)).join("")}${tb("Other", "other")}</div>
+        <input id="other" class="input other-in" maxlength="30" placeholder="Describe your other task" value="${esc(state.other)}" autocomplete="off" ${state.tasks.includes("other") ? "" : "hidden"}>
+        <button class="btn primary" id="next" ${tasksValid() ? "" : "disabled"}>Next</button>`;
     } else {
       body = `
         <div class="q-axis">Last step</div>
@@ -223,11 +259,39 @@
         r.oninput = () => { state[k] = +r.value; $(k + "v").textContent = r.value + " h"; };
       });
       $("next").onclick = next;
+    } else if (s < STEP_AREA) {
+      const L = LOGISTICS[s - FIRST_LOGI];
+      document.querySelectorAll(".opt").forEach(b => {
+        b.onclick = () => {
+          state.logi[L.id] = b.dataset.o;
+          document.querySelectorAll(".opt").forEach(x => x.classList.remove("sel"));
+          b.classList.add("sel");
+          setTimeout(next, 200);
+        };
+      });
     } else if (s === STEP_AREA) {
-      const a = $("area");
-      a.oninput = () => { state.area = a.value; $("cnt").textContent = a.value.length; };
-      a.onkeydown = e => { if (e.key === "Enter") next(); };
-      $("next").onclick = next;
+      const other = $("other");
+      const refresh = () => {
+        document.querySelectorAll(".task").forEach(b => {
+          const rk = state.tasks.indexOf(b.dataset.t);
+          b.classList.toggle("sel", rk >= 0);
+          b.querySelector(".rk").textContent = rk >= 0 ? rk + 1 : "";
+        });
+        other.hidden = !state.tasks.includes("other");
+        $("next").disabled = !tasksValid();
+      };
+      document.querySelectorAll(".task").forEach(b => {
+        b.onclick = () => {
+          const id = b.dataset.t, i = state.tasks.indexOf(id);
+          if (i >= 0) state.tasks.splice(i, 1);
+          else if (state.tasks.length >= 4) { toast("You can pick up to 4. Tap one to remove it."); return; }
+          else state.tasks.push(id);
+          refresh();
+          if (id === "other" && !other.hidden) other.focus();
+        };
+      });
+      other.oninput = () => { state.other = other.value; $("next").disabled = !tasksValid(); };
+      $("next").onclick = () => { if (tasksValid()) next(); };
     } else {
       markTakenColors();
       document.querySelectorAll(".swatch").forEach(b => {
@@ -259,6 +323,9 @@
 
   async function submit() {
     const btn = $("submit"), err = $("err");
+    const noLogi = LOGISTICS.find(L => !state.logi[L.id]);
+    if (noLogi) { err.textContent = `Please answer: ${noLogi.text}`; return; }
+    if (!tasksValid()) { err.textContent = "Pick at least one task you'd like to work on."; return; }
     const missing = state.answers.findIndex(a => a == null);
     if (missing !== -1) {
       err.textContent = `Question ${missing + 1} is unanswered. Go back and complete it.`;
@@ -270,7 +337,7 @@
       color: state.color,
       answers: state.answers,
       scores: computeScores(state.answers),
-      area: state.area.trim(),
+      area: JSON.stringify({ tasks: taskLabels(), logi: state.logi }),
       hours_sat: state.sat,
       hours_sun: state.sun,
       updated_at: new Date().toISOString()
@@ -337,8 +404,13 @@
           <a class="link" href="#/">← Home</a>
           <button class="link" id="refresh">Refresh</button>
         </div>
-        <h1 class="h-dash">Team dashboard</h1>
-        <p class="hint" id="meta">Loading...</p>
+        <div class="dash-head">
+          <div>
+            <h1 class="h-dash">Team dashboard</h1>
+            <p class="hint" id="meta">Loading...</p>
+          </div>
+          <a class="btn primary" href="#/quiz">Take the quiz</a>
+        </div>
         ${banner()}
         <div id="dash"></div>
       </main>`;
@@ -361,26 +433,36 @@
     lastSig = sig;
 
     if (!rows.length) {
-      dash.innerHTML = `<p class="empty">No responses yet. Share the quiz link in the group.</p>`;
+      dash.innerHTML = `<p class="empty">No responses yet. Be the first one!</p>`;
       return;
     }
 
+    lastRows = rows;
     dash.innerHTML = `
       <div class="actions">
-        <button class="btn primary" id="allimg">Copy all as image</button>
+        <button class="btn ghost" id="allimg">Copy all as image</button>
         <button class="btn ghost" id="alldl">Download all as image</button>
         <button class="btn ghost" id="alltxt">Copy all answers as text</button>
       </div>
-      <div class="panel" id="teamp"></div>
       <h3 class="sec">Individual maps</h3>
       <div class="grid" id="grid"></div>
-      <h3 class="sec">Strongest per area</h3>
+      <div class="sec-row"><h3 class="sec">Strongest per area</h3>
+        <div class="mini"><button class="btn ghost" id="bestimg">Copy image</button><button class="btn ghost" id="besttxt">Copy text</button></div></div>
       <div class="best">${bestPerArea(rows)}</div>
-      <h3 class="sec">Availability</h3>
-      <div class="av-legend">Top bar Saturday 14 · bottom bar Sunday 15 (out of 24 h)</div>
+      <h3 class="sec">Compare</h3>
+      <p class="hint">Choose who to overlay on the radar.</p>
+      <div class="chips" id="chips"></div>
+      <div class="panel" id="teamp"></div>
+      <div class="sec-row"><h3 class="sec">Availability</h3>
+        <div class="mini"><button class="btn ghost" id="avimg">Copy image</button><button class="btn ghost" id="avtxt">Copy text</button></div></div>
       <div class="avail">${availability(rows)}</div>`;
 
-    $("teamp").appendChild(teamCanvas(rows));
+    $("bestimg").onclick = () => copyCanvas(bestCanvas(rows), "team-strongest-per-area");
+    $("besttxt").onclick = () => copyText(bestText(rows));
+    $("avimg").onclick = () => copyCanvas(availCanvas(rows), "team-availability");
+    $("avtxt").onclick = () => copyText(availText(rows));
+
+    renderCompare();
 
     const grid = $("grid");
     rows.forEach((r, i) => {
@@ -415,14 +497,44 @@
     }).join("");
   }
 
+  function renderCompare() {
+    const rows = lastRows, chips = $("chips"), panel = $("teamp");
+    if (!chips || !panel || !rows.length) return;
+    const keys = rows.map(r => r.name_key);
+    if (compareSel) compareSel = compareSel.filter(k => keys.includes(k));
+    if (!compareSel || !compareSel.length) {
+      const me = keyOf(store.get("skillsmap_name") || "");
+      compareSel = [keys.includes(me) ? me : keys[0]];
+    }
+    const all = compareSel.length === rows.length;
+    chips.innerHTML =
+      rows.map(r => `<button class="chip ${compareSel.includes(r.name_key) ? "sel" : ""}" data-k="${esc(r.name_key)}" style="--c:${r.color}"><i></i>${esc(r.name)}</button>`).join("") +
+      `<button class="chip ghost" id="chipall">${all ? "Clear" : "All"}</button>`;
+    chips.querySelectorAll(".chip[data-k]").forEach(b => {
+      b.onclick = () => {
+        const k = b.dataset.k, i = compareSel.indexOf(k);
+        if (i >= 0) { if (compareSel.length > 1) compareSel.splice(i, 1); }
+        else compareSel.push(k);
+        renderCompare();
+      };
+    });
+    $("chipall").onclick = () => {
+      compareSel = all ? [compareSel[0]] : keys.slice();
+      renderCompare();
+    };
+    panel.innerHTML = "";
+    panel.appendChild(teamCanvas(rows.filter(r => compareSel.includes(r.name_key))));
+  }
+
   function availability(rows) {
+    const bar = (day, h, col) => `
+      <div class="av-line"><span class="av-day">${day}</span>
+        <div class="av-bar"><div style="width:${(h / 24) * 100}%;background:${col}"></div><span>${h}h</span></div></div>`;
     return rows.map(r => `
       <div class="av-row">
-        <div class="av-name" style="color:${r.color}">${esc(r.name)}</div>
-        <div class="av-bars">
-          <div class="av-bar"><div style="width:${(r.hours_sat / 24) * 100}%;background:${r.color}"></div><span>${r.hours_sat}h</span></div>
-          <div class="av-bar"><div style="width:${(r.hours_sun / 24) * 100}%;background:${rgba(r.color, 0.6)}"></div><span>${r.hours_sun}h</span></div>
-        </div>
+        <div class="av-who"><div class="av-name" style="color:${r.color}">${esc(r.name)}</div>
+          <div class="av-logi">${LOGISTICS.map(L => `${L.label}: ${esc(logiOf(r)[L.id] || "-")}`).join("<br>")}</div></div>
+        <div class="av-bars">${bar("Sat", r.hours_sat, r.color)}${bar("Sun", r.hours_sun, rgba(r.color, 0.6))}</div>
       </div>`).join("");
   }
 
@@ -431,17 +543,35 @@
     const lines = [
       `Name: ${r.name}`,
       `Availability: Saturday ${r.hours_sat}h, Sunday ${r.hours_sun}h`,
-      `Wants to work on: ${r.area || "-"}`,
+      `Preferred tasks (ranked): ${tasksOf(r).map((t, i) => `${i + 1}. ${t}`).join(", ") || "-"}`,
       `Scores (0-100): ` + AXES.map((a, i) => `${a.label} ${r.scores[i]}`).join(", "),
       "",
       "Answers:"
     ];
+    LOGISTICS.slice().reverse().forEach(L => lines.splice(2, 0, `${L.label}: ${logiOf(r)[L.id] || "-"}`));
     QUESTIONS.forEach((q, i) => {
       const ax = AXES.find(a => a.id === q.axis);
       const o = q.options[r.answers[i]];
       lines.push(`${i + 1}. [${ax.label}] ${q.text}: ${o ? o.label : "-"}`);
     });
     return lines.join("\n");
+  }
+
+  function topOf(rows, i) {
+    return rows.slice().sort((a, b) => b.scores[i] - a.scores[i]).slice(0, 3);
+  }
+
+  function bestText(rows) {
+    return "Strongest per area (top 3, score 0-100)\n\n" + AXES.map((ax, i) =>
+      `${ax.label}: ` + topOf(rows, i).map((r, k) => `${k + 1}. ${r.name} ${r.scores[i]}`).join(", ")).join("\n");
+  }
+
+  function availText(rows) {
+    return "Availability (hours per day)\n\n" + rows.map(r => {
+      const l = logiOf(r);
+      return `${r.name}: Sat ${r.hours_sat}h, Sun ${r.hours_sun}h · ` +
+        LOGISTICS.map(L => `${L.label}: ${l[L.id] || "-"}`).join(" · ");
+    }).join("\n");
   }
 
   function allText(rows) {
@@ -486,7 +616,7 @@
   }
 
   // ---------- Canvas drawing ----------
-  const CARD_W = 600, CARD_H = 760;
+  const CARD_W = 600, CARD_H = 790;
 
   function makeCanvas(w, h) {
     const d = 2;
@@ -599,7 +729,7 @@
 
   function drawCard(ctx, x, y, w, h, r) {
     ctx.save();
-    roundRect(ctx, x, y, w, h, 24);
+    roundRect(ctx, x + 2, y + 2, w - 4, h - 4, 24);
     ctx.fillStyle = "#0d1430";
     ctx.fill();
     ctx.lineWidth = 3;
@@ -630,17 +760,27 @@
     ctx.fillStyle = "#8b93b8";
     ctx.font = `600 12px ${FONT}`;
     ctx.fillText("WANTS TO WORK ON", x + 30, y + 612);
-    ctx.fillStyle = "#e8ecff";
-    const area = r.area || "-";
-    fitFont(ctx, area, 600, 22, w - 60);
-    ctx.fillText(area, x + 30, y + 642);
+    const tk = tasksOf(r);
+    ctx.fillStyle = r.color;
+    ctx.font = `700 24px ${FONT}`;
+    ctx.fillText("#1", x + 30, y + 646);
+    const off = ctx.measureText("#1 ").width;
+    ctx.fillStyle = "#ffffff";
+    fitFont(ctx, tk[0] || "-", 700, 24, w - 60 - off);
+    ctx.fillText(tk[0] || "-", x + 30 + off, y + 646);
+    if (tk.length > 1) {
+      const rest = tk.slice(1).map((t, i) => `${i + 2}. ${t}`).join("    ");
+      ctx.fillStyle = "#aab2d6";
+      fitFont(ctx, rest, 500, 15, w - 60);
+      ctx.fillText(rest, x + 30, y + 676);
+    }
 
     ctx.fillStyle = "#8b93b8";
     ctx.font = `600 12px ${FONT}`;
-    ctx.fillText("AVAILABILITY", x + 30, y + 684);
+    ctx.fillText("AVAILABILITY", x + 30, y + 718);
     ctx.fillStyle = "#e8ecff";
     ctx.font = `600 22px ${FONT}`;
-    ctx.fillText(`Sat ${r.hours_sat}h  ·  Sun ${r.hours_sun}h`, x + 30, y + 714);
+    ctx.fillText(`Sat ${r.hours_sat}h  ·  Sun ${r.hours_sun}h`, x + 30, y + 750);
 
     ctx.restore();
   }
@@ -659,7 +799,7 @@
   function drawTeam(ctx, x, y, w, rows) {
     const h = teamHeight(rows, w);
     ctx.save();
-    roundRect(ctx, x, y, w, h, 24);
+    roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 24);
     ctx.fillStyle = "#0d1430";
     ctx.fill();
     ctx.lineWidth = 1;
@@ -705,22 +845,116 @@
     return c;
   }
 
+  function sheet(ctx, W, H, title) {
+    roundRect(ctx, 1, 1, W - 2, H - 2, 24);
+    ctx.fillStyle = "#0d1430";
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(160,175,230,0.25)";
+    ctx.stroke();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#e8ecff";
+    ctx.font = `700 30px ${FONT}`;
+    ctx.fillText(title, W / 2, 54);
+    ctx.fillStyle = "#8b93b8";
+    ctx.font = `500 13px ${FONT}`;
+    ctx.fillText("NASA SPACE APPS 2026 · TEAM 1", W / 2, 80);
+  }
+
+  function bestCanvas(rows) {
+    const W = 960, pad = 30, gap = 16, cols = 3, bh = 150, top = 110;
+    const bw = (W - pad * 2 - gap * (cols - 1)) / cols;
+    const nRows = Math.ceil(AXES.length / cols);
+    const H = top + nRows * bh + (nRows - 1) * gap + pad;
+    const [c, ctx] = makeCanvas(W, H);
+    sheet(ctx, W, H, "Strongest per area");
+    AXES.forEach((ax, i) => {
+      const x = pad + (i % cols) * (bw + gap), y = top + Math.floor(i / cols) * (bh + gap);
+      roundRect(ctx, x, y, bw, bh, 14);
+      ctx.fillStyle = "#111a3a";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(160,175,230,0.16)";
+      ctx.stroke();
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = ax.color;
+      fitFont(ctx, ax.label.toUpperCase(), 700, 14, bw - 36);
+      ctx.fillText(ax.label.toUpperCase(), x + 18, y + 34);
+      topOf(rows, i).forEach((r, k) => {
+        const ly = y + 70 + k * 28;
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#8b93b8";
+        ctx.font = `600 17px ${FONT}`;
+        ctx.fillText(`${k + 1}.`, x + 18, ly);
+        ctx.fillStyle = r.color;
+        fitFont(ctx, r.name, 600, 17, bw - 110);
+        ctx.fillText(r.name, x + 42, ly);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#aab2d6";
+        ctx.font = `600 17px ${FONT}`;
+        ctx.fillText(String(r.scores[i]), x + bw - 18, ly);
+      });
+    });
+    return c;
+  }
+
+  function availCanvas(rows) {
+    const W = 960, pad = 30, top = 110, rh = 84, nameW = 250;
+    const H = top + rows.length * rh + pad - 10;
+    const [c, ctx] = makeCanvas(W, H);
+    sheet(ctx, W, H, "Availability");
+    const bx = pad + nameW, bwMax = W - pad - bx - 40;
+    rows.forEach((r, i) => {
+      const y = top + i * rh, l = logiOf(r);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = r.color;
+      fitFont(ctx, r.name, 700, 20, nameW - 20);
+      ctx.fillText(r.name, pad + 10, y + 22);
+      ctx.fillStyle = "#8b93b8";
+      LOGISTICS.forEach((L, k) => {
+        const t = `${L.label}: ${l[L.id] || "-"}`;
+        fitFont(ctx, t, 500, 13, nameW - 20);
+        ctx.fillText(t, pad + 10, y + 44 + k * 18);
+      });
+      [["Sat", r.hours_sat, r.color], ["Sun", r.hours_sun, rgba(r.color, 0.6)]].forEach(([d, h, col], k) => {
+        const by = y + 6 + k * 28;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#8b93b8";
+        ctx.font = `600 13px ${FONT}`;
+        ctx.fillText(d, bx, by + 10);
+        roundRect(ctx, bx + 40, by, bwMax, 20, 6);
+        ctx.fillStyle = "rgba(160,175,230,0.16)";
+        ctx.fill();
+        if (h > 0) {
+          roundRect(ctx, bx + 40, by, Math.max(12, (bwMax * h) / 24), 20, 6);
+          ctx.fillStyle = col;
+          ctx.fill();
+        }
+        ctx.fillStyle = h > 2 ? "#050816" : "#e8ecff";
+        ctx.font = `700 12px ${FONT}`;
+        ctx.fillText(`${h}h`, bx + 48, by + 10);
+      });
+    });
+    return c;
+  }
+
   function allCanvas(rows) {
     const gap = 40, pad = 40;
     const W = pad * 2 + CARD_W * 2 + gap;
-    const th = teamHeight(rows, W - pad * 2);
     const cardRows = Math.ceil(rows.length / 2);
-    const H = pad + th + gap + cardRows * (CARD_H + gap) + pad - gap;
+    const H = pad + cardRows * (CARD_H + gap) + pad - gap;
     const [c, ctx] = makeCanvas(W, H);
     c.style.maxWidth = "100%";
     ctx.fillStyle = "#070b1d";
     ctx.fillRect(0, 0, W, H);
-    drawTeam(ctx, pad, pad, W - pad * 2, rows);
     rows.forEach((r, i) => {
       const col = i % 2, row = Math.floor(i / 2);
       const onlyOne = i === rows.length - 1 && rows.length % 2 === 1;
       const x = onlyOne ? (W - CARD_W) / 2 : pad + col * (CARD_W + gap);
-      const y = pad + th + gap + row * (CARD_H + gap);
+      const y = pad + row * (CARD_H + gap);
       drawCard(ctx, x, y, CARD_W, CARD_H, r);
     });
     return c;

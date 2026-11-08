@@ -5,6 +5,7 @@ const AXES = [
   { id: "data",       label: "Data analysis & statistics",  short: "Data & Stats", color: "#1DD1A1" },
   { id: "earth",      label: "Earth science & remote sensing", short: "Earth Sci", color: "#7BED9F" },
   { id: "ai",         label: "AI / ML",                     short: "AI / ML",      color: "#A29BFE" },
+  { id: "proto",      label: "Rapid prototyping",           short: "Prototyping",  color: "#FF8787" },
   { id: "design",     label: "UI/UX & visual design",       short: "Design",       color: "#FD79A8" },
   { id: "story",      label: "Storytelling, pitch & docs",  short: "Story & Docs", color: "#FECA57" },
   { id: "leadership", label: "Leadership & teamwork",       short: "Leadership",   color: "#FF9F43" }
@@ -74,12 +75,26 @@ const QUESTIONS = [
     { label: "I understand the basics", pts: 2 },
     { label: "Never", pts: 1 },
     { label: "Not for me", pts: 0 } ] },
-  { axis: "ai", text: "Building fast with AI tools (LLMs, vibecoding, agents)", options: [
+  { axis: "ai", text: "Integrating AI into apps (LLM APIs, RAG, prompting)", options: [
+    { label: "I've built AI features into real apps", pts: 4 },
+    { label: "I've integrated an LLM API in a project", pts: 3 },
+    { label: "I've experimented with it", pts: 2 },
+    { label: "Never", pts: 1 },
+    { label: "Not for me", pts: 0 } ] },
+
+  // Rapid prototyping
+  { axis: "proto", text: "Coding fast with AI tools (Copilot, Cursor, coding agents)", options: [
     { label: "I use them daily to ship code", pts: 4 },
     { label: "I use them often", pts: 3 },
     { label: "Occasionally", pts: 2 },
     { label: "Rarely or never", pts: 1 },
     { label: "I prefer not to", pts: 0 } ] },
+  { axis: "proto", text: "Shipping a working demo under time pressure", options: [
+    { label: "I do it regularly (hackathons, side projects)", pts: 4 },
+    { label: "I've done it a few times", pts: 3 },
+    { label: "Once or twice", pts: 2 },
+    { label: "Never", pts: 1 },
+    { label: "I'd rather not", pts: 0 } ] },
 
   // UI/UX & visual design
   { axis: "design", text: "Designing interfaces (Figma, layouts)", options: [
@@ -132,4 +147,28 @@ const QUESTIONS = [
     { label: "2 to 3", pts: 3 },
     { label: "1", pts: 2 },
     { label: "None, this is my first", pts: 0 } ] }
+];
+
+// Tasks for the ranked preference step (up to 4, plus "Other")
+const TASKS = [
+  "Frontend & web app",
+  "Interactive fire map",
+  "FIRMS data pipeline",
+  "MODIS/VIIRS harmonization",
+  "Statistics & anomaly detection",
+  "ML / forecasting model",
+  "Fire calendar & charts",
+  "UI/UX design",
+  "Demo video",
+  "Pitch & presentation",
+  "README & project docs",
+  "Team coordination"
+];
+
+// Logistics (not scored, not shown on the card)
+const LOGISTICS = [
+  { id: "meetings", label: "Meetings", text: "Can you join team meetings before the hackathon (9 to 13 Nov)?",
+    options: ["Yes, most days", "Some days", "Probably not"] },
+  { id: "briefing", label: "Briefing 13 Nov", text: "Will you attend the in-person briefing in Singapore on Friday 13 Nov?",
+    options: ["Yes", "Probably", "Not sure", "No"] }
 ];
